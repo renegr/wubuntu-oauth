@@ -12,13 +12,17 @@
 ;; (def WL_DOMAIN "http://localhost:5000")
 (def WL_DOMAIN "http://wubuntu-oauth.herokuapp.com")
 
+(def alphanumeric "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
+(defn get-random-id [length]
+  (apply str (repeatedly length #(rand-nth alphanumeric))))
+
 (defn splash []
   {:status 200
    :headers {"Content-Type" "text/plain"}
    :body (pr-str ["Hello" :from 'Heroku])})
 
 (defn- oauth-start []
-  (let [random-key "some-random-value"]
+  (let [random-key (get-random-id 40)]
     (-> (redirect (str "https://www.wunderlist.com/oauth/authorize"
                        "?client_id=" (env :api-key)
                        "&redirect_uri=" WL_DOMAIN "/oauth/accept"
