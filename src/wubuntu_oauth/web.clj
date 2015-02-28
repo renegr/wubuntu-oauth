@@ -5,7 +5,12 @@
             [clojure.java.io :as io]
             [ring.adapter.jetty :as jetty]
             [ring.util.response :refer [redirect response]]
-            [environ.core :refer [env]]))
+            [environ.core :refer [env]]
+            [clj-http.client :as http]
+            [cheshire.core :refer [generate-string parse-string]]))
+
+;; (def WL_DOMAIN "http://localhost:5000")
+(def WL_DOMAIN "http://wubuntu-oauth.herokuapp.com")
 
 (defn splash []
   {:status 200
@@ -16,12 +21,25 @@
   (let [random-key "some-random-value"]
     (-> (redirect (str "https://www.wunderlist.com/oauth/authorize"
                        "?client_id=" (env :api-key)
-                       "&redirect_uri=http://wubuntu-oauth.herokuapp.com/oauth/accept"
-                       "&random="))
+                       "&redirect_uri=" WL_DOMAIN "/oauth/accept"
+                       "&state=" random-key))
         (assoc :session {:random random-key}))))
 
-(defn- oauth-accept [{:keys [code]} {:keys [random]}]
-  (response [code random]))
+(defn- oauth-accept [{:keys [code state]} {:keys [random]}]
+  (when-not (= state random) (throw (Exception. "Random key does not mach! Authentication cancelled")))
+  (let [post-result (http/post 
+                      "https://www.wunderlist.com/oauth/access_token"
+                      {:body    (generate-string {:client_id     (env :api-key) 
+                                                  :client_secret (env :api-secret)
+                                                  :code          code})
+                       :headers {"X-Api-Version" "2"}
+                       :content-type :json
+                       :accept :json})
+        body (parse-string (:body post-result) true)]
+    (redirect (str "/oauth/finished?token=" (:access_token body)))))
+
+(defn- oauth-finish [{:keys [token]}]
+  (response "Done."))
 
 (defroutes app
   (GET "/" []
@@ -30,6 +48,8 @@
     (oauth-start))
   (GET "/oauth/accept" {params :params session :session}
     (oauth-accept params session))
+  (GET "/oauth/finished" {params :params}
+    (oauth-finish params))
   (ANY "*" []
        (route/not-found (slurp (io/resource "404.html")))))
 
